@@ -134,6 +134,12 @@
   .sheet h2 { font-size: 17px; margin: 0 0 8px; }
   .sheet p { font-size: 14px; color: var(--muted); margin: 0 0 16px; line-height: 1.5; }
   .sheet button { width: 100%; font-weight: 600; }
+  .sheet-check {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 14px; color: var(--muted); margin: 0 0 14px;
+    min-height: 44px; cursor: pointer;
+  }
+  .sheet-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -162,6 +168,7 @@
     <div class="sheet-icon">↗</div>
     <h2 id="sheetTitle">正在打开第三方内容</h2>
     <p id="sheetDesc">该新闻将由第三方网站或 App 打开。<br>阅读完成后返回这里，热榜会继续等着你。</p>
+    <label class="sheet-check"><input type="checkbox" id="sheetDontAsk"> 不再提示，以后直接打开</label>
     <button id="sheetGo">打开</button>
   </div>
 </div>
@@ -170,6 +177,7 @@
 (function () {
   var READ_KEY = 'hotnews:read:v1';
   var EXIT_KEY = 'hotnews:exit:v1';
+  var NOTIP_KEY = 'hotnews:notip:v1';
   var state = { platform: '', date: '', items: [] };
   var pendingUrl = null;
   var readMap = {};
@@ -193,6 +201,13 @@
   }
   function isRead(it) {
     return !!readMap[it.platform + '|' + it.crawl_date + '|' + it.title];
+  }
+
+  function noTip() {
+    try { return localStorage.getItem(NOTIP_KEY) === '1'; } catch (e) { return false; }
+  }
+  function setNoTip() {
+    try { localStorage.setItem(NOTIP_KEY, '1'); } catch (e) {}
   }
 
   function formatHot(n) {
@@ -309,6 +324,9 @@
     }
     pendingUrl = it.url || '';
     if (!pendingUrl || pendingUrl === '#') return;
+    // 勾选过"不再提示"后直接跳转，不再弹层
+    if (noTip()) { doExit(); return; }
+    $('sheetDontAsk').checked = false;
     $('overlay').classList.add('show');
   }
 
@@ -328,6 +346,8 @@
   // 真正跳转：记录离开标记，用当前页导航，避免 iOS PWA 新开空白 webview
   function doExit() {
     if (!pendingUrl) return;
+    // 只有点了"打开"才记住勾选；点遮罩取消不算
+    if ($('sheetDontAsk').checked) setNoTip();
     $('overlay').classList.remove('show');
     try { sessionStorage.setItem(EXIT_KEY, String(Date.now())); } catch (e) {}
     var url = pendingUrl;

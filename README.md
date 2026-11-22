@@ -20,7 +20,7 @@
 ```yaml
 services:
   hotsearch:
-    image: ghcr.io/zxkbazinga/hello-news:0.1.1
+    image: ghcr.io/zxkbazinga/hello-news:0.1.2
     container_name: hotsearch
     restart: unless-stopped
     ports:
@@ -79,7 +79,7 @@ docker run -d --name hotsearch \
   -e TZ=Asia/Shanghai \
   -e RETENTION_DAYS=3 \
   -e RUN_TIME=08:00 \
-  ghcr.io/zxkbazinga/hello-news:0.1.1
+  ghcr.io/zxkbazinga/hello-news:0.1.2
 ```
 
 **Windows PowerShell：**
@@ -92,7 +92,7 @@ docker run -d --name hotsearch `
   -v "${PWD}/data:/data" `
   -e TZ=Asia/Shanghai `
   -e RETENTION_DAYS=3 `
-  ghcr.io/zxkbazinga/hello-news:0.1.1
+  ghcr.io/zxkbazinga/hello-news:0.1.2
 ```
 
 常用管理命令：
@@ -115,7 +115,7 @@ docker stop hotsearch && docker rm hotsearch   # 停止并删除容器（数据�
 说明：
 
 - 页面、按钮、列表都针对 iOS Safari 做过适配，支持深色模式
-- 点击条目会先弹出提示，确认后在**当前页面**打开第三方网站/App；读完返回时自动落回热榜并提示“已从第三方返回”，不会出现空白页
+- 点击条目会先弹出提示，确认后在**当前页面**打开第三方网站/App；读完返回时自动落回热榜并提示“已从第三方返回”，不会出现空白页。提示层可勾选“不再提示，以后直接打开”，勾选后（需点“打开”生效）以后点条目直接跳转，选择只存在本机浏览器
 - 看过的条目会显示“已读”标记并淡化；点右上角“清除已读”可重置。已读记录只存在你自己的手机浏览器里，不上传服务器
 - 页面右上角“↻ 刷新”可直接触发一次抓取
 - **局域网 HTTP 下 Service Worker 的离线缓存不生效**（浏览器安全限制，仅 HTTPS / localhost 可用）。“添加到主屏幕”本身不受影响，联网时数据正常
@@ -224,9 +224,11 @@ ORDER BY rank LIMIT 10;
 镜像发布在 GitHub Container Registry：
 
 ```
-ghcr.io/zxkbazinga/hello-news:0.1.1
+ghcr.io/zxkbazinga/hello-news:0.1.2
 ghcr.io/zxkbazinga/hello-news:0.1
 ghcr.io/zxkbazinga/hello-news:latest
+
+`v0.1.2` 相比 `v0.1.1`：跳转提示层新增“不再提示”勾选框，勾选后永久跳过提示。
 
 `v0.1.1` 相比 `v0.1.0`：新增已读标记与清除入口；第三方跳转改为当前页打开并在返回时提示，消除 iOS 上返回空白页的问题；升级 Service Worker 缓存版本。
 ```
