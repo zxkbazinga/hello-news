@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover 配合下方 safe-area padding，适配刘海屏与底部指示条 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="热榜">
+<meta name="theme-color" content="#0A84FF">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<title>今日热榜</title>
+<style>
+  :root {
+    --bg: #f2f2f7;
+    --card: #ffffff;
+    --text: #1c1c1e;
+    --muted: #8e8e93;
+    --line: #e5e5ea;
+    --accent: #007aff;
+    --chip: #ffffff;
+    --shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --card: #1c1c1e;
+      --text: #f2f2f7;
+      --muted: #98989f;
+      --line: #38383a;
+      --accent: #0a84ff;
+      --chip: #1c1c1e;
+      --shadow: none;
+    }
+    meta[name="theme-color"] { content: #000000; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    /* 16px 起，避免 iOS Safari 对小字号自动放大 */
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px 16px 40px; }
+
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 0; font-weight: 700; letter-spacing: -.5px; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  button {
+    font: inherit; color: var(--accent); background: var(--card);
+    border: 0; border-radius: 12px; padding: 0 14px;
+    min-height: 44px; /* Apple HIG 最小触摸目标 */
+    box-shadow: var(--shadow); cursor: pointer;
+  }
+  button:active { opacity: .55; }
+  .spinning { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .scroller {
+    display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; margin: 0 -16px 12px; padding: 0 16px 2px;
+  }
+  .scroller::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto; min-height: 40px; padding: 0 16px; border-radius: 20px;
+    display: inline-flex; align-items: center; background: var(--chip);
+    color: var(--text); box-shadow: var(--shadow); font-size: 15px;
+    border: 1px solid var(--line); cursor: pointer;
+  }
+  .chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .chip:active { opacity: .6; }
+
+  .group { margin-bottom: 18px; }
+  .group-title {
+    font-size: 13px; color: var(--muted); font-weight: 600;
+    text-transform: uppercase; letter-spacing: .4px; margin: 0 4px 8px;
+  }
+  .list { background: var(--card); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+  .row {
+    display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px;
+    border-bottom: 1px solid var(--line); text-decoration: none; color: inherit;
+    min-height: 56px;
+  }
+  .row:last-child { border-bottom: 0; }
+  .row:active { background: rgba(120,120,128,.12); }
+  .rank {
+    flex: 0 0 26px; height: 26px; border-radius: 8px; display: flex;
+    align-items: center; justify-content: center; font-size: 13px;
+    font-weight: 700; background: var(--bg); color: var(--muted);
+  }
+  .rank.top { background: var(--accent); color: #fff; }
+  .body { flex: 1; min-width: 0; }
+  .title { font-size: 16px; line-height: 1.4; word-break: break-word; }
+  .meta { font-size: 12px; color: var(--muted); margin-top: 5px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .tag { color: #ff3b30; font-weight: 600; }
+  .empty { text-align: center; color: var(--muted); padding: 48px 16px; font-size: 15px; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 24px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>今日热榜</h1>
+      <div class="sub" id="subtitle">加载中…</div>
+    </div>
+    <button id="refresh" aria-label="刷新">↻ 刷新</button>
+  </header>
+
+  <div class="scroller" id="platforms"></div>
+  <div class="scroller" id="dates"></div>
+  <main id="content"><div class="empty">正在加载数据…</div></main>
+  <footer id="footer"></footer>
+</div>
+
+<script>
+(function () {
+  var state = { platform: '', date: '' };
+  var $ = function (id) { return document.getElementById(id); };
+
+  function formatHot(n) {
+    if (!n || n <= 0) return '';
+    if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿';
+    if (n >= 10000) return (n / 10000).toFixed(1) + '万';
+    return String(n);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function syncUrl() {
+    var p = new URLSearchParams();
+    if (state.platform) p.set('platform', state.platform);
+    if (state.date) p.set('date', state.date);
+    var q = p.toString();
+    history.replaceState(null, '', q ? '?' + q : location.pathname);
+  }
+
+  function loadMeta() {
+    return fetch('/api/meta', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (meta) {
+        var params = new URLSearchParams(location.search);
+        state.platform = params.get('platform') || '';
+        state.date = params.get('date') || (meta.dates[0] || '');
+
+        var p = $('platforms');
+        p.innerHTML = '';
+        [['', '全部']].concat(meta.platforms.map(function (x) {
+          return [x.platform, x.platform_name.replace(/热搜|热榜|热点/g, '')];
+        })).forEach(function (pair) {
+          var b = document.createElement('button');
+          b.className = 'chip' + (state.platform === pair[0] ? ' on' : '');
+          b.textContent = pair[1];
+          b.onclick = function () { state.platform = pair[0]; syncUrl(); loadMeta(); };
+          p.appendChild(b);
+        });
+
+        var d = $('dates');
+        d.innerHTML = '';
+        meta.dates.forEach(function (day) {
+          var b = document.createElement('button');
+          b.className = 'chip' + (state.date === day ? ' on' : '');
+          b.textContent = day;
+          b.onclick = function () { state.date = day; syncUrl(); loadMeta(); };
+          d.appendChild(b);
+        });
+
+        $('footer').textContent = '仅保留最近 ' + meta.retention_days + ' 天数据 · ' + (meta.dates.length ? '共 ' + meta.dates.length + ' 天' : '暂无数据');
+        return loadList();
+      });
+  }
+
+  function loadList() {
+    var q = new URLSearchParams();
+    if (state.platform) q.set('platform', state.platform);
+    if (state.date) q.set('date', state.date);
+    $('subtitle').textContent = (state.date || '最新') + (state.platform ? ' · ' + state.platform : ' · 全部平台');
+    return fetch('/api/hot?' + q.toString(), { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var box = $('content');
+        if (!data.items || !data.items.length) {
+          box.innerHTML = '<div class="empty">这一天还没有数据<br>点右上角刷新即可抓取</div>';
+          return;
+        }
+        var groups = {}, order = [];
+        data.items.forEach(function (it) {
+          if (!groups[it.platform]) { groups[it.platform] = []; order.push(it.platform); }
+          groups[it.platform].push(it);
+        });
+        box.innerHTML = order.map(function (key) {
+          var name = groups[key][0].platform_name;
+          var rows = groups[key].map(function (it) {
+            var hot = formatHot(it.hot_value);
+            return '<a class="row" href="' + escapeHtml(it.url || '#') + '" target="_blank" rel="noopener">' +
+              '<span class="rank' + (it.rank <= 3 ? ' top' : '') + '">' + it.rank + '</span>' +
+              '<span class="body"><span class="title">' + escapeHtml(it.title) + '</span>' +
+              '<span class="meta">' + (it.label ? '<span class="tag">' + escapeHtml(it.label) + '</span>' : '') +
+              (hot ? '<span>热度 ' + escapeHtml(hot) + '</span>' : '') + '</span></span></a>';
+          }).join('');
+          return '<section class="group"><h2 class="group-title">' + escapeHtml(name) + '</h2>' +
+            '<div class="list">' + rows + '</div></section>';
+        }).join('');
+      })
+      .catch(function () {
+        $('content').innerHTML = '<div class="empty">加载失败，请检查网络后重试</div>';
+      });
+  }
+
+  $('refresh').onclick = function () {
+    var btn = this;
+    btn.classList.add('spinning');
+    btn.disabled = true;
+    fetch('/api/refresh', { method: 'POST', cache: 'no-store' })
+      .then(function () { return loadMeta(); })
+      .catch(function () { alert('抓取触发失败'); })
+      .finally(function () { btn.classList.remove('spinning'); btn.disabled = false; });
+  };
+
+  window.addEventListener('pageshow', function (e) { if (e.persisted) loadMeta(); });
+  loadMeta().catch(function () {
+    $('content').innerHTML = '<div class="empty">连接服务失败</div>';
+  });
+
+  // 注册 Service Worker，让 PWA 可安装并支持离线打开
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>

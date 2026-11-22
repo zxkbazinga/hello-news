@@ -1,0 +1,43 @@
+# 用法（在 E:/develop/workspace/hello-news 目录下执行）：
+#   构建并常驻运行：docker compose up -d --build
+#   iOS 访问：      同一 WiFi 下打开 http://<运行Docker的机器IP>:8080
+#   查看日志：      docker compose logs -f
+#   手动抓一次：    docker compose run --rm hotsearch python -m app.main --once
+#   只清理旧数据：  docker compose run --rm hotsearch python -m app.main --purge
+#   查看统计：      docker compose run --rm hotsearch python -m app.main --stats
+#   数据库位置：    ./data/hotsearch.db
+# 说明：compose run 使用同一镜像与同一数据挂载，只是临时替换启动命令。
+
+services:
+  hotsearch:
+    build: .
+    image: hotsearch-crawler:latest
+    container_name: hotsearch
+    restart: unless-stopped
+    ports:
+      # 宿主机 8080 -> 容器 8080；若宿主机 8080 被占用，改成 "8081:8080"
+      - "8080:8080"
+    environment:
+      TZ: Asia/Shanghai
+      # 要裁剪平台就改这里，例如 "weibo,zhihu,baidu"
+      PLATFORMS: "weibo,zhihu,baidu,douyin,bilibili,toutiao"
+      # 每天执行时间（24 小时制，容器时区）
+      RUN_TIME: "08:00"
+      # 容器启动后是否先立刻抓一次
+      RUN_IMMEDIATELY: "true"
+      MAX_ITEMS: "50"
+      REQUEST_TIMEOUT: "15"
+      DB_PATH: "/data/hotsearch.db"
+      # 只保留最近 N 个自然日（含当天），超过自动删除
+      RETENTION_DAYS: "3"
+      # Web 服务监听端口；改这里时上面的 ports 映射右侧也要同步改
+      WEB_PORT: "8080"
+      WEB_HOST: "0.0.0.0"
+      # ZHIHU_COOKIE: "可选，知乎遇到限制时填入"
+    volumes:
+      - ./data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
