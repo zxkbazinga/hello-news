@@ -1,5 +1,5 @@
 /* 热榜 PWA Service Worker：缓存外壳 + 网络优先的 API 策略 */
-const CACHE = 'hotnews-v1';
+const CACHE = 'hotnews-v2';
 const SHELL = [
   '/',
   '/manifest.webmanifest',

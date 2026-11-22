@@ -56,6 +56,7 @@
   header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
   h1 { font-size: 28px; line-height: 1.2; margin: 0; font-weight: 700; letter-spacing: -.5px; }
   .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .head-actions { display: flex; gap: 8px; }
   button {
     font: inherit; color: var(--accent); background: var(--card);
     border: 0; border-radius: 12px; padding: 0 14px;
@@ -63,6 +64,7 @@
     box-shadow: var(--shadow); cursor: pointer;
   }
   button:active { opacity: .55; }
+  button.ghost { font-size: 13px; padding: 0 12px; }
   .spinning { animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -80,6 +82,10 @@
   .chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
   .chip:active { opacity: .6; }
 
+  .hint {
+    font-size: 12px; color: var(--muted); margin: -2px 4px 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
   .group { margin-bottom: 18px; }
   .group-title {
     font-size: 13px; color: var(--muted); font-weight: 600;
@@ -89,7 +95,7 @@
   .row {
     display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px;
     border-bottom: 1px solid var(--line); text-decoration: none; color: inherit;
-    min-height: 56px;
+    min-height: 56px; cursor: pointer;
   }
   .row:last-child { border-bottom: 0; }
   .row:active { background: rgba(120,120,128,.12); }
@@ -103,8 +109,31 @@
   .title { font-size: 16px; line-height: 1.4; word-break: break-word; }
   .meta { font-size: 12px; color: var(--muted); margin-top: 5px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .tag { color: #ff3b30; font-weight: 600; }
+  .readmark {
+    font-size: 11px; color: var(--muted); border: 1px solid var(--line);
+    border-radius: 5px; padding: 0 5px; font-weight: 500;
+  }
+  /* 已读：标题与排名淡化，不再醒目 */
+  .row.read .title { color: var(--muted); font-weight: 400; }
+  .row.read .rank { opacity: .45; }
   .empty { text-align: center; color: var(--muted); padding: 48px 16px; font-size: 15px; }
   footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 24px; }
+
+  /* 跳转第三方前的提示层：点击后短暂显示，说明将由第三方 App 打开 */
+  .overlay {
+    position: fixed; inset: 0; z-index: 100; display: none;
+    align-items: center; justify-content: center; padding: 24px;
+    background: rgba(0,0,0,.38); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  .overlay.show { display: flex; }
+  .sheet {
+    width: 100%; max-width: 340px; background: var(--card); border-radius: 18px;
+    padding: 22px 20px 18px; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,.22);
+  }
+  .sheet-icon { font-size: 34px; line-height: 1; margin-bottom: 10px; }
+  .sheet h2 { font-size: 17px; margin: 0 0 8px; }
+  .sheet p { font-size: 14px; color: var(--muted); margin: 0 0 16px; line-height: 1.5; }
+  .sheet button { width: 100%; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -114,19 +143,57 @@
       <h1>今日热榜</h1>
       <div class="sub" id="subtitle">加载中…</div>
     </div>
-    <button id="refresh" aria-label="刷新">↻ 刷新</button>
+    <div class="head-actions">
+      <button id="clearRead" class="ghost" aria-label="清除已读">清除已读</button>
+      <button id="refresh" aria-label="刷新">↻ 刷新</button>
+    </div>
   </header>
 
   <div class="scroller" id="platforms"></div>
   <div class="scroller" id="dates"></div>
+  <div class="hint"><span>点击条目跳转原始页面，返回后会自动回到这里</span></div>
   <main id="content"><div class="empty">正在加载数据…</div></main>
   <footer id="footer"></footer>
 </div>
 
+<!-- 跳转提示层 -->
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet">
+    <div class="sheet-icon">↗</div>
+    <h2 id="sheetTitle">正在打开第三方内容</h2>
+    <p id="sheetDesc">该新闻将由第三方网站或 App 打开。<br>阅读完成后返回这里，热榜会继续等着你。</p>
+    <button id="sheetGo">打开</button>
+  </div>
+</div>
+
 <script>
 (function () {
-  var state = { platform: '', date: '' };
+  var READ_KEY = 'hotnews:read:v1';
+  var EXIT_KEY = 'hotnews:exit:v1';
+  var state = { platform: '', date: '', items: [] };
+  var pendingUrl = null;
+  var readMap = {};
   var $ = function (id) { return document.getElementById(id); };
+
+  function loadReads() {
+    try { readMap = JSON.parse(localStorage.getItem(READ_KEY) || '{}') || {}; }
+    catch (e) { readMap = {}; }
+  }
+  function saveReads() {
+    try {
+      if (!Object.keys(readMap).length) { localStorage.removeItem(READ_KEY); return; }
+      localStorage.setItem(READ_KEY, JSON.stringify(readMap));
+    } catch (e) {}
+  }
+  function markRead(it) {
+    if (!it) return;
+    var key = it.platform + '|' + it.crawl_date + '|' + it.title;
+    readMap[key] = Date.now();
+    saveReads();
+  }
+  function isRead(it) {
+    return !!readMap[it.platform + '|' + it.crawl_date + '|' + it.title];
+  }
 
   function formatHot(n) {
     if (!n || n <= 0) return '';
@@ -193,12 +260,13 @@
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var box = $('content');
-        if (!data.items || !data.items.length) {
+        state.items = data.items || [];
+        if (!state.items.length) {
           box.innerHTML = '<div class="empty">这一天还没有数据<br>点右上角刷新即可抓取</div>';
           return;
         }
         var groups = {}, order = [];
-        data.items.forEach(function (it) {
+        state.items.forEach(function (it) {
           if (!groups[it.platform]) { groups[it.platform] = []; order.push(it.platform); }
           groups[it.platform].push(it);
         });
@@ -206,11 +274,13 @@
           var name = groups[key][0].platform_name;
           var rows = groups[key].map(function (it) {
             var hot = formatHot(it.hot_value);
-            return '<a class="row" href="' + escapeHtml(it.url || '#') + '" target="_blank" rel="noopener">' +
+            var read = isRead(it) ? ' read' : '';
+            var mark = isRead(it) ? '<span class="readmark">已读</span>' : '';
+            return '<div class="row' + read + '" role="link" tabindex="0" data-idx="' + state.items.indexOf(it) + '">' +
               '<span class="rank' + (it.rank <= 3 ? ' top' : '') + '">' + it.rank + '</span>' +
               '<span class="body"><span class="title">' + escapeHtml(it.title) + '</span>' +
-              '<span class="meta">' + (it.label ? '<span class="tag">' + escapeHtml(it.label) + '</span>' : '') +
-              (hot ? '<span>热度 ' + escapeHtml(hot) + '</span>' : '') + '</span></span></a>';
+              '<span class="meta">' + mark + (it.label ? '<span class="tag">' + escapeHtml(it.label) + '</span>' : '') +
+              (hot ? '<span>热度 ' + escapeHtml(hot) + '</span>' : '') + '</span></span></div>';
           }).join('');
           return '<section class="group"><h2 class="group-title">' + escapeHtml(name) + '</h2>' +
             '<div class="list">' + rows + '</div></section>';
@@ -220,6 +290,79 @@
         $('content').innerHTML = '<div class="empty">加载失败，请检查网络后重试</div>';
       });
   }
+
+  // 点击条目：先标记已读，再弹提示层，由用户确认后跳转
+  function openItem(idx) {
+    var it = state.items[idx];
+    if (!it) return;
+    markRead(it);
+    var row = $('content').querySelector('[data-idx="' + idx + '"]');
+    if (row) {
+      row.classList.add('read');
+      var meta = row.querySelector('.meta');
+      if (meta && !meta.querySelector('.readmark')) {
+        var m = document.createElement('span');
+        m.className = 'readmark';
+        m.textContent = '已读';
+        meta.insertBefore(m, meta.firstChild);
+      }
+    }
+    pendingUrl = it.url || '';
+    if (!pendingUrl || pendingUrl === '#') return;
+    $('overlay').classList.add('show');
+  }
+
+  $('content').addEventListener('click', function (e) {
+    var row = e.target.closest ? e.target.closest('.row') : null;
+    if (!row || !row.dataset.idx) return;
+    openItem(Number(row.dataset.idx));
+  });
+  $('content').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var row = e.target.closest ? e.target.closest('.row') : null;
+    if (!row || !row.dataset.idx) return;
+    e.preventDefault();
+    openItem(Number(row.dataset.idx));
+  });
+
+  // 真正跳转：记录离开标记，用当前页导航，避免 iOS PWA 新开空白 webview
+  function doExit() {
+    if (!pendingUrl) return;
+    $('overlay').classList.remove('show');
+    try { sessionStorage.setItem(EXIT_KEY, String(Date.now())); } catch (e) {}
+    var url = pendingUrl;
+    pendingUrl = null;
+    window.location.href = url;
+  }
+  $('sheetGo').onclick = doExit;
+  $('overlay').addEventListener('click', function (e) {
+    if (e.target === $('overlay')) { $('overlay').classList.remove('show'); pendingUrl = null; }
+  });
+
+  // 从第三方返回时：提示并回到列表
+  function checkReturn() {
+    var raw = null;
+    try { raw = sessionStorage.getItem(EXIT_KEY); } catch (e) {}
+    if (!raw) return;
+    try { sessionStorage.removeItem(EXIT_KEY); } catch (e) {}
+    var ts = Number(raw);
+    if (!ts || Date.now() - ts > 30 * 60 * 1000) return; // 30 分钟以上不算本次返回
+    $('subtitle').textContent = '已从第三方返回 · ' + (state.date || '最新');
+    var hint = document.querySelector('.hint span');
+    if (hint) {
+      hint.textContent = '已从第三方应用返回，继续浏览热榜';
+      setTimeout(function () {
+        hint.textContent = '点击条目跳转原始页面，返回后会自动回到这里';
+      }, 5000);
+    }
+    loadMeta();
+  }
+
+  $('clearRead').onclick = function () {
+    readMap = {};
+    saveReads();
+    loadList();
+  };
 
   $('refresh').onclick = function () {
     var btn = this;
@@ -231,10 +374,19 @@
       .finally(function () { btn.classList.remove('spinning'); btn.disabled = false; });
   };
 
-  window.addEventListener('pageshow', function (e) { if (e.persisted) loadMeta(); });
+  window.addEventListener('pageshow', function (e) {
+    checkReturn();
+    if (e.persisted) loadMeta();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') checkReturn();
+  });
+
+  loadReads();
   loadMeta().catch(function () {
     $('content').innerHTML = '<div class="empty">连接服务失败</div>';
   });
+  checkReturn();
 
   // 注册 Service Worker，让 PWA 可安装并支持离线打开
   if ('serviceWorker' in navigator) {
